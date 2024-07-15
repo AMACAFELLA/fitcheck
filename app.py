@@ -2,6 +2,7 @@
 
 
 import asyncio
+import os
 from threading import Event, Thread
 
 from flask import Flask, render_template
@@ -71,5 +72,4 @@ def stop_conversation():
 
 
 if __name__ == "__main__":
-    asyncio.run(conversation_manager.initialize())
-    socketio.run(app, debug=False)
+    socketio.run(app, debug=False, port=int(os.environ.get("PORT", default=5000)))
