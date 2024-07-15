@@ -1,5 +1,20 @@
 [phases.setup]
-nixPkgs = ["python39", "gcc", "libffi", "bash", "coreutils"]
+nixPkgs = [
+    "python39",
+    "gcc",
+    "libffi",
+    "portaudio",
+    "pkg-config",
+    "alsa-lib"
+]
 
 [phases.install]
-cmds = ["chmod +x build.sh", "./build.sh"]
+cmds = [
+    "python -m venv /opt/venv",
+    ". /opt/venv/bin/activate",
+    "pip install --upgrade pip",
+    "pip install -r requirements.txt"
+]
+
+[start]
+cmd = "gunicorn fitcheck.app:app"
