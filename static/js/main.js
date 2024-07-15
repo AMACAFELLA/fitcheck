@@ -282,7 +282,6 @@ function formatMessage(message) {
 
         return `
          <a href="${url}" target="_blank" class="pinterest-link">
-             <img src="/api/placeholder/60/60" alt="Pinterest item">
              <div class="pinterest-link-content">
                  <div class="pinterest-link-title">${title}</div>
                  <div class="pinterest-link-price">View on Pinterest</div>

@@ -39,7 +39,7 @@ greenlet==3.0.3
 groq==0.4.1
 grpcio==1.64.1
 grpcio-status==1.62.2
-gunicorn==21.2.0
+gunicorn
 h11==0.14.0
 h2==4.1.0
 hpack==4.0.0
@@ -154,3 +154,4 @@ yarl==1.9.4
 zope.event==5.0
 zope.interface==6.2
 flask-CORS
+pyaudio
