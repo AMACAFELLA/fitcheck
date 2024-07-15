@@ -1,1 +1,0 @@
-web: gunicorn fitcheck.app:app
