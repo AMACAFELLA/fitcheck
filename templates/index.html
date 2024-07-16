@@ -144,6 +144,10 @@
       </div>
       <div id="loadingIndicator" class="loading-indicator"></div>
     </div>
+    <script>
+      // Set the base URL for API calls
+      window.baseUrl = "{{ request.url_root }}";
+    </script>
     <script src="/static/js/main.js"></script>
   </body>
 </html>
