@@ -10,6 +10,11 @@ ENV APP_HOME /app
 WORKDIR $APP_HOME
 COPY . ./
 
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0
+
 # Install production dependencies
 RUN pip install -r requirements.txt
 RUN pip install gunicorn
