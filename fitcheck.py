@@ -764,8 +764,11 @@ class WebcamStream:
 
     def read(self, encode=False):
         self.lock.acquire()
-        frame = self.frame.copy()
+        frame = self.frame.copy() if self.frame is not None else None
         self.lock.release()
+
+        if frame is None:
+            return None
 
         if encode:
             _, buffer = cv2.imencode(".jpeg", frame)

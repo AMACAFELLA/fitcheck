@@ -167,7 +167,14 @@ load_dotenv()
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key')
-socketio = SocketIO(app, async_mode='gevent', cors_allowed_origins="*", logger=True, engineio_logger=True)
+socketio = SocketIO(
+    app,
+    async_mode="gevent",
+    cors_allowed_origins="*",
+    logger=True,
+    engineio_logger=True,
+    ping_timeout=60
+)
 
 conversation_manager = ConversationManager(socketio)
 webcam_stream = WebcamStream().start()
@@ -204,8 +211,10 @@ def start_conversation():
 @socketio.on('get_image')
 def get_image():
     frame = webcam_stream.read(encode=True)
-    socketio.emit('image', {'image': frame.decode('utf-8')})
-
+    if frame is not None:
+        socketio.emit("image", {"image": frame.decode("utf-8")})
+    else:
+        socketio.emit("image_error", {"message": "Failed to capture image"})
 @socketio.on('stop_conversation')
 def stop_conversation():
     global conversation_thread, stop_event
