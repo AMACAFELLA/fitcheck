@@ -255,7 +255,7 @@ import os
 import time
 from threading import Event, Thread
 
-from flask import Flask, render_template, Response
+from flask import Flask, render_template, Response,  request, jsonify
 from flask_socketio import SocketIO
 from engineio.async_drivers import gevent
 
@@ -264,15 +264,7 @@ from fitcheck import ConversationManager, WebcamStream
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your-secret-key")
 
-socketio = SocketIO(
-    app,
-    async_mode="gevent",
-    cors_allowed_origins="*",
-    logger=True,
-    engineio_logger=True,
-)
-
-conversation_manager = ConversationManager(socketio)
+conversation_manager = ConversationManager()
 webcam_stream = WebcamStream().start()
 conversation_thread = None
 stop_event = Event()
@@ -284,16 +276,7 @@ async def conversation_thread_function():
 def index():
     return render_template("index.html")
 
-@socketio.on("connect")
-def on_connect():
-    print("Client connected")
-    get_image()
-
-@socketio.on("disconnect")
-def on_disconnect():
-    print("Client disconnected")
-
-@socketio.on("start_conversation")
+@app.route("/start_conversation", methods=["POST"])
 def start_conversation():
     global conversation_thread, stop_event
     print("Start Conversation")
@@ -303,15 +286,11 @@ def start_conversation():
             target=lambda: asyncio.run(conversation_thread_function())
         )
         conversation_thread.start()
+        return jsonify({"status": "started"})
     else:
-        print("Conversation already in progress")
+        return jsonify({"status": "already_running"})
 
-@socketio.on("get_image")
-def get_image():
-    frame = webcam_stream.read(encode=True)
-    socketio.emit("image", {"image": frame.decode("utf-8")})
-
-@socketio.on("stop_conversation")
+@app.route("/stop_conversation", methods=["POST"])
 def stop_conversation():
     global conversation_thread, stop_event
     print("Stopping Conversation")
@@ -321,20 +300,28 @@ def stop_conversation():
     conversation_thread = None
     conversation_manager.reset()
     asyncio.run(conversation_manager.initialize())
-    socketio.emit("conversation_stopped")
+    return jsonify({"status": "stopped"})
 
-# Long Polling Endpoint
-@app.route('/stream')
-def stream():
-    def generate():
-        while True:
-            if stop_event.is_set():
-                break
-            frame = webcam_stream.read(encode=True)
-            yield f"data: {frame.decode('utf-8')}\n\n"
-            time.sleep(0.1)  # Adjust sleep time for desired polling frequency
+@app.route("/get_updates", methods=["GET"])
+def get_updates():
+    messages = conversation_manager.get_new_messages()
+    return jsonify({"messages": messages})
 
-    return Response(generate(), mimetype='text/event-stream')
+@app.route("/send_message", methods=["POST"])
+def send_message():
+    message = request.json.get("message")
+    conversation_manager.add_user_message(message)
+    return jsonify({"status": "sent"})
+
+@app.route("/get_image", methods=["GET"])
+def get_image():
+    try:
+        frame = webcam_stream.read(encode=True)
+        if frame is None:
+            return jsonify({"error": "No frame available"}), 500
+        return jsonify({"image": frame.decode("utf-8")})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
@@ -343,9 +330,4 @@ if __name__ == "__main__":
     print(f"Starting server on port {port}")
     print(f"Debug mode: {debug}")
 
-    # Use gevent WSGI server instead of the default Flask development server
-    from gevent import pywsgi
-    from geventwebsocket.handler import WebSocketHandler
-
-    server = pywsgi.WSGIServer(('0.0.0.0', port), app, handler_class=WebSocketHandler)
-    server.serve_forever()
+    app.run(host="0.0.0.0", port=port, debug=debug)

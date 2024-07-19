@@ -739,10 +739,52 @@ class TranscriptCollector:
         return " ".join(self.transcript_parts)
 
 
+# class WebcamStream:
+#     def __init__(self):
+#         self.stream = cv2.VideoCapture(0)
+#         _, self.frame = self.stream.read()
+#         self.running = False
+#         self.lock = Lock()
+
+#     def start(self):
+#         if self.running:
+#             return self
+
+#         self.running = True
+#         self.thread = Thread(target=self.update, args=())
+#         self.thread.start()
+#         return self
+
+#     def update(self):
+#         while self.running:
+#             _, frame = self.stream.read()
+#             self.lock.acquire()
+#             self.frame = frame
+#             self.lock.release()
+
+#     def read(self, encode=False):
+#         self.lock.acquire()
+#         frame = self.frame.copy()
+#         self.lock.release()
+
+#         if encode:
+#             _, buffer = cv2.imencode(".jpeg", frame)
+#             return base64.b64encode(buffer)
+
+#         return frame
+
+#     def stop(self):
+#         self.running = False
+#         if self.thread.is_alive():
+#             self.thread.join()
+
+#     def __exit__(self, exc_type, exc_value, exc_traceback):
+#         self.stream.release()
+
 class WebcamStream:
     def __init__(self):
         self.stream = cv2.VideoCapture(0)
-        _, self.frame = self.stream.read()
+        self.frame = None
         self.running = False
         self.lock = Lock()
 
@@ -757,17 +799,21 @@ class WebcamStream:
 
     def update(self):
         while self.running:
-            _, frame = self.stream.read()
-            self.lock.acquire()
-            self.frame = frame
-            self.lock.release()
+            ret, frame = self.stream.read()
+            if ret:
+                self.lock.acquire()
+                self.frame = frame
+                self.lock.release()
 
     def read(self, encode=False):
         self.lock.acquire()
-        frame = self.frame.copy()
+        if self.frame is not None:
+            frame = self.frame.copy()
+        else:
+            frame = None
         self.lock.release()
 
-        if encode:
+        if frame is not None and encode:
             _, buffer = cv2.imencode(".jpeg", frame)
             return base64.b64encode(buffer)
 
@@ -781,15 +827,86 @@ class WebcamStream:
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.stream.release()
 
+# class ConversationManager:
+#     def __init__(self, socketio):
+#         self.socketio = socketio
+#         self.transcription_response = ""
+#         self.llm = None
+#         self.webcam_stream = WebcamStream().start()
+#         self.tts = TextToSpeech()
 
+#     async def initialize(self):
+#         self.llm = LanguageModelProcessor()
+#         await self.llm.initialize_model()
 
+#     def reset(self):
+#         self.transcription_response = ""
+#         self.llm = None
+#         self.tts = TextToSpeech()
+
+#     def process_image(self, image_path):
+#         with open(image_path, "rb") as image_file:
+#             image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
+#         return image_base64
+
+#     async def main(self, stop_event):
+#         await self.initialize()
+
+#         def handle_full_sentence(full_sentence):
+#             self.transcription_response = full_sentence
+
+#         while not stop_event.is_set():
+#             await get_transcript(handle_full_sentence, stop_event)
+
+#             if stop_event.is_set():
+#                 break
+
+#             if "goodbye" in self.transcription_response.lower():
+#                 print("Goodbye! Ending the conversation.")
+#                 self.tts.speak(
+#                     "Goodbye! It was a pleasure assisting you with your style today. Feel free to come back anytime for more fashion advice."
+#                 )
+#                 break
+
+#             frame = self.webcam_stream.read()
+#             image_path = "webcam_image.jpg"
+#             cv2.imwrite(image_path, frame)
+#             print(f"Webcam image saved as '{image_path}'")
+
+#             image_base64 = self.process_image(image_path)
+
+#             try:
+#                 full_response, tts_response = await self.llm.process(
+#                     self.transcription_response, image_base64
+#                 )
+#                 self.socketio.emit(
+#                     "user_message", {"message": self.transcription_response}
+#                 )
+#                 self.socketio.emit("ai_response", {"message": full_response})
+#                 self.tts.speak(tts_response)
+#             except Exception as e:
+#                 print(f"Error processing image: {str(e)}")
+#                 self.socketio.emit(
+#                     "ai_response",
+#                     {
+#                         "message": "I'm sorry, I couldn't process the image. Could you please try again?"
+#                     },
+#                 )
+#                 self.tts.speak(
+#                     "I'm sorry, I couldn't process the image. Could you please try again?"
+#                 )
+
+#             self.transcription_response = ""
+
+#         self.webcam_stream.stop()
 class ConversationManager:
-    def __init__(self, socketio):
-        self.socketio = socketio
+    def __init__(self):
         self.transcription_response = ""
         self.llm = None
         self.webcam_stream = WebcamStream().start()
         self.tts = TextToSpeech()
+        self.messages = []
+        self.message_lock = Lock()
 
     async def initialize(self):
         self.llm = LanguageModelProcessor()
@@ -799,60 +916,58 @@ class ConversationManager:
         self.transcription_response = ""
         self.llm = None
         self.tts = TextToSpeech()
+        with self.message_lock:
+            self.messages = []
 
     def process_image(self, image_path):
         with open(image_path, "rb") as image_file:
             image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
         return image_base64
 
+    def add_user_message(self, message):
+        with self.message_lock:
+            self.messages.append({"type": "user", "content": message})
+
+    def add_ai_message(self, message):
+        with self.message_lock:
+            self.messages.append({"type": "ai", "content": message})
+
+    def get_new_messages(self):
+        with self.message_lock:
+            new_messages = self.messages.copy()
+            self.messages = []
+        return new_messages
+
     async def main(self, stop_event):
         await self.initialize()
 
-        def handle_full_sentence(full_sentence):
-            self.transcription_response = full_sentence
-
         while not stop_event.is_set():
-            await get_transcript(handle_full_sentence, stop_event)
+            if self.transcription_response:
+                frame = self.webcam_stream.read()
+                if frame is not None:
+                    image_path = "webcam_image.jpg"
+                    cv2.imwrite(image_path, frame)
+                    print(f"Webcam image saved as '{image_path}'")
 
-            if stop_event.is_set():
-                break
+                    image_base64 = self.process_image(image_path)
 
-            if "goodbye" in self.transcription_response.lower():
-                print("Goodbye! Ending the conversation.")
-                self.tts.speak(
-                    "Goodbye! It was a pleasure assisting you with your style today. Feel free to come back anytime for more fashion advice."
-                )
-                break
+                    try:
+                        full_response, tts_response = await self.llm.process(
+                            self.transcription_response, image_base64
+                        )
+                        self.add_user_message(self.transcription_response)
+                        self.add_ai_message(full_response)
+                        self.tts.speak(tts_response)
+                    except Exception as e:
+                        print(f"Error processing image: {str(e)}")
+                        self.add_ai_message("I'm sorry, I couldn't process the image. Could you please try again?")
+                        self.tts.speak("I'm sorry, I couldn't process the image. Could you please try again?")
 
-            frame = self.webcam_stream.read()
-            image_path = "webcam_image.jpg"
-            cv2.imwrite(image_path, frame)
-            print(f"Webcam image saved as '{image_path}'")
+                    self.transcription_response = ""
+                else:
+                    print("No frame available from webcam")
 
-            image_base64 = self.process_image(image_path)
-
-            try:
-                full_response, tts_response = await self.llm.process(
-                    self.transcription_response, image_base64
-                )
-                self.socketio.emit(
-                    "user_message", {"message": self.transcription_response}
-                )
-                self.socketio.emit("ai_response", {"message": full_response})
-                self.tts.speak(tts_response)
-            except Exception as e:
-                print(f"Error processing image: {str(e)}")
-                self.socketio.emit(
-                    "ai_response",
-                    {
-                        "message": "I'm sorry, I couldn't process the image. Could you please try again?"
-                    },
-                )
-                self.tts.speak(
-                    "I'm sorry, I couldn't process the image. Could you please try again?"
-                )
-
-            self.transcription_response = ""
+            await asyncio.sleep(0.1)
 
         self.webcam_stream.stop()
 
