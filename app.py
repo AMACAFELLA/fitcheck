@@ -256,6 +256,7 @@ from threading import Event, Thread
 
 from flask import Flask, render_template
 from flask_socketio import SocketIO
+from engineio.async_drivers import gevent
 
 from fitcheck import ConversationManager, WebcamStream
 
@@ -264,7 +265,7 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your-secret-key")
 
 socketio = SocketIO(
     app,
-    async_mode="eventlet",
+    async_mode="gevent",
     cors_allowed_origins="*",
     logger=True,
     engineio_logger=True,
@@ -328,4 +329,9 @@ if __name__ == "__main__":
     print(f"Starting server on port {port}")
     print(f"Debug mode: {debug}")
 
-    socketio.run(app, host="0.0.0.0", port=port, debug=debug)
+    # Use gevent WSGI server instead of the default Flask development server
+    from gevent import pywsgi
+    from geventwebsocket.handler import WebSocketHandler
+
+    server = pywsgi.WSGIServer(('0.0.0.0', port), app, handler_class=WebSocketHandler)
+    server.serve_forever()
