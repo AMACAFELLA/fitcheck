@@ -250,16 +250,14 @@
 
 #     socketio.run(app, host="0.0.0.0", port=port, debug=debug)
 
-
-
-
-
+import asyncio
 import os
+from threading import Event, Thread
+
 from flask import Flask, render_template
 from flask_socketio import SocketIO
+
 from fitcheck import ConversationManager, WebcamStream
-import asyncio
-from threading import Event, Thread
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your-secret-key")
@@ -277,10 +275,8 @@ webcam_stream = WebcamStream().start()
 conversation_thread = None
 stop_event = Event()
 
-def conversation_thread_function():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(conversation_manager.main(stop_event))
+async def conversation_thread_function():
+    await conversation_manager.main(stop_event)
 
 @app.route("/")
 def index():
@@ -301,7 +297,9 @@ def start_conversation():
     print("Start Conversation")
     if conversation_thread is None or not conversation_thread.is_alive():
         stop_event.clear()
-        conversation_thread = Thread(target=conversation_thread_function)
+        conversation_thread = Thread(
+            target=lambda: asyncio.run(conversation_thread_function())
+        )
         conversation_thread.start()
     else:
         print("Conversation already in progress")
@@ -320,6 +318,7 @@ def stop_conversation():
         conversation_thread.join()
     conversation_thread = None
     conversation_manager.reset()
+    asyncio.run(conversation_manager.initialize())
     socketio.emit("conversation_stopped")
 
 if __name__ == "__main__":

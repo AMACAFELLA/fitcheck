@@ -739,48 +739,6 @@ class TranscriptCollector:
         return " ".join(self.transcript_parts)
 
 
-# class WebcamStream:
-#     def __init__(self):
-#         self.stream = cv2.VideoCapture(0)
-#         _, self.frame = self.stream.read()
-#         self.running = False
-#         self.lock = Lock()
-
-#     def start(self):
-#         if self.running:
-#             return self
-
-#         self.running = True
-#         self.thread = Thread(target=self.update, args=())
-#         self.thread.start()
-#         return self
-
-#     def update(self):
-#         while self.running:
-#             _, frame = self.stream.read()
-#             self.lock.acquire()
-#             self.frame = frame
-#             self.lock.release()
-
-#     def read(self, encode=False):
-#         self.lock.acquire()
-#         frame = self.frame.copy()
-#         self.lock.release()
-
-#         if encode:
-#             _, buffer = cv2.imencode(".jpeg", frame)
-#             return base64.b64encode(buffer)
-
-#         return frame
-
-#     def stop(self):
-#         self.running = False
-#         if self.thread.is_alive():
-#             self.thread.join()
-
-#     def __exit__(self, exc_type, exc_value, exc_traceback):
-#         self.stream.release()
-
 class WebcamStream:
     def __init__(self):
         self.stream = cv2.VideoCapture(0)
@@ -823,141 +781,6 @@ class WebcamStream:
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.stream.release()
 
-# class ConversationManager:
-#     def __init__(self, socketio):
-#         self.socketio = socketio
-#         self.transcription_response = ""
-#         self.llm = None
-#         self.webcam_stream = WebcamStream().start()
-#         self.tts = TextToSpeech()
-
-#     async def initialize(self):
-#         self.llm = LanguageModelProcessor()
-#         await self.llm.initialize_model()
-
-#     def reset(self):
-#         self.transcription_response = ""
-#         self.llm = None
-#         self.tts = TextToSpeech()
-
-#     def process_image(self, image_path):
-#         with open(image_path, "rb") as image_file:
-#             image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
-#         return image_base64
-
-#     async def main(self, stop_event):
-#         await self.initialize()
-
-#         def handle_full_sentence(full_sentence):
-#             self.transcription_response = full_sentence
-
-#         while not stop_event.is_set():
-#             await get_transcript(handle_full_sentence, stop_event)
-
-#             if stop_event.is_set():
-#                 break
-
-#             if "goodbye" in self.transcription_response.lower():
-#                 print("Goodbye! Ending the conversation.")
-#                 self.tts.speak(
-#                     "Goodbye! It was a pleasure assisting you with your style today. Feel free to come back anytime for more fashion advice."
-#                 )
-#                 break
-
-#             frame = self.webcam_stream.read()
-#             image_path = "webcam_image.jpg"
-#             cv2.imwrite(image_path, frame)
-#             print(f"Webcam image saved as '{image_path}'")
-
-#             image_base64 = self.process_image(image_path)
-
-#             try:
-#                 full_response, tts_response = await self.llm.process(
-#                     self.transcription_response, image_base64
-#                 )
-#                 self.socketio.emit(
-#                     "user_message", {"message": self.transcription_response}
-#                 )
-#                 self.socketio.emit("ai_response", {"message": full_response})
-#                 self.tts.speak(tts_response)
-#             except Exception as e:
-#                 print(f"Error processing image: {str(e)}")
-#                 self.socketio.emit(
-#                     "ai_response",
-#                     {
-#                         "message": "I'm sorry, I couldn't process the image. Could you please try again?"
-#                     },
-#                 )
-#                 self.tts.speak(
-#                     "I'm sorry, I couldn't process the image. Could you please try again?"
-#                 )
-
-#             self.transcription_response = ""
-
-#         self.webcam_stream.stop()
-
-
-# transcript_collector = TranscriptCollector()
-
-
-# async def get_transcript(callback, stop_event):
-#     transcription_complete = asyncio.Event()
-
-#     try:
-#         config = DeepgramClientOptions(options={"keepalive": "true"})
-#         deepgram: DeepgramClient = DeepgramClient("", config)
-
-#         dg_connection = deepgram.listen.asynclive.v("1")
-#         print("Listening...")
-
-#         async def on_message(self, result, **kwargs):
-#             if stop_event.is_set():
-#                 transcription_complete.set()
-#                 return
-
-#             sentence = result.channel.alternatives[0].transcript
-
-#             if not result.speech_final:
-#                 transcript_collector.add_part(sentence)
-#             else:
-#                 transcript_collector.add_part(sentence)
-#                 full_sentence = transcript_collector.get_full_transcript()
-#                 if len(full_sentence.strip()) > 0:
-#                     full_sentence = full_sentence.strip()
-#                     print(f"Human: {full_sentence}")
-#                     callback(full_sentence)
-#                     transcript_collector.reset()
-#                     transcription_complete.set()
-
-#         dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
-
-#         options = LiveOptions(
-#             model="nova-2",
-#             punctuate=True,
-#             language="en-US",
-#             encoding="linear16",
-#             channels=1,
-#             sample_rate=16000,
-#             endpointing=300,
-#             smart_format=True,
-#         )
-
-#         await dg_connection.start(options)
-
-#         microphone = Microphone(dg_connection.send)
-#         microphone.start()
-
-#         await transcription_complete.wait()
-#         microphone.finish()
-#         await dg_connection.finish()
-
-#     except Exception as e:
-#         print(f"Could not open socket: {e}")
-#         return
-
-
-# if __name__ == "__main__":
-#     asyncio.run(ConversationManager().main())
 
 class ConversationManager:
     def __init__(self, socketio):
@@ -1032,7 +855,9 @@ class ConversationManager:
 
         self.webcam_stream.stop()
 
+
 transcript_collector = TranscriptCollector()
+
 
 async def get_transcript(callback, stop_event):
     transcription_complete = asyncio.Event()
@@ -1088,6 +913,7 @@ async def get_transcript(callback, stop_event):
     except Exception as e:
         print(f"Could not open socket: {e}")
         return
+
 
 if __name__ == "__main__":
     asyncio.run(ConversationManager().main())
