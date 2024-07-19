@@ -252,9 +252,10 @@
 
 import asyncio
 import os
+import time
 from threading import Event, Thread
 
-from flask import Flask, render_template
+from flask import Flask, render_template, Response
 from flask_socketio import SocketIO
 from engineio.async_drivers import gevent
 
@@ -321,6 +322,19 @@ def stop_conversation():
     conversation_manager.reset()
     asyncio.run(conversation_manager.initialize())
     socketio.emit("conversation_stopped")
+
+# Long Polling Endpoint
+@app.route('/stream')
+def stream():
+    def generate():
+        while True:
+            if stop_event.is_set():
+                break
+            frame = webcam_stream.read(encode=True)
+            yield f"data: {frame.decode('utf-8')}\n\n"
+            time.sleep(0.1)  # Adjust sleep time for desired polling frequency
+
+    return Response(generate(), mimetype='text/event-stream')
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))

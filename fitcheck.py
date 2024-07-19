@@ -782,6 +782,7 @@ class WebcamStream:
         self.stream.release()
 
 
+
 class ConversationManager:
     def __init__(self, socketio):
         self.socketio = socketio
