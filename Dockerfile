@@ -13,10 +13,12 @@ COPY . ./
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
-    libglib2.0-0
+    libglib2.0-0 \
+    ffmpeg
 
 # Install production dependencies
 RUN pip install -r requirements.txt
-RUN pip install gunicorn
+RUN pip install gunicorn eventlet
 
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
+# Run the web service on container startup using gunicorn with eventlet worker
+CMD exec gunicorn --bind :$PORT --workers 1 --worker-class eventlet --threads 8 --timeout 0 app:app
