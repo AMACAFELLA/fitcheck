@@ -154,12 +154,6 @@
 
 #     socketio.run(app, host="0.0.0.0", port=port, debug=debug)
 
-
-
-
-
-
-
 # import asyncio
 # import os
 # from threading import Event, Thread
@@ -251,21 +245,30 @@
 #     socketio.run(app, host="0.0.0.0", port=port, debug=debug)
 
 import asyncio
+import base64
 import os
-import time
 from threading import Event, Thread
 
-from flask import Flask, render_template, Response,  request, jsonify
+from flask import Flask, render_template
 from flask_socketio import SocketIO
 from engineio.async_drivers import gevent
 
-from fitcheck import ConversationManager, WebcamStream
+from fitcheck import ConversationManager, TextToSpeech, TranscriptCollector, get_transcript
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "your-secret-key")
 
-conversation_manager = ConversationManager()
-webcam_stream = WebcamStream().start()
+socketio = SocketIO(
+    app,
+    async_mode="gevent",
+    cors_allowed_origins="*",
+    logger=True,
+    engineio_logger=True,
+)
+
+conversation_manager = ConversationManager(socketio)
+tts = TextToSpeech()
+transcript_collector = TranscriptCollector()
 conversation_thread = None
 stop_event = Event()
 
@@ -276,7 +279,15 @@ async def conversation_thread_function():
 def index():
     return render_template("index.html")
 
-@app.route("/start_conversation", methods=["POST"])
+@socketio.on("connect")
+def on_connect():
+    print("Client connected")
+
+@socketio.on("disconnect")
+def on_disconnect():
+    print("Client disconnected")
+
+@socketio.on("start_conversation")
 def start_conversation():
     global conversation_thread, stop_event
     print("Start Conversation")
@@ -286,11 +297,10 @@ def start_conversation():
             target=lambda: asyncio.run(conversation_thread_function())
         )
         conversation_thread.start()
-        return jsonify({"status": "started"})
     else:
-        return jsonify({"status": "already_running"})
+        print("Conversation already in progress")
 
-@app.route("/stop_conversation", methods=["POST"])
+@socketio.on("stop_conversation")
 def stop_conversation():
     global conversation_thread, stop_event
     print("Stopping Conversation")
@@ -300,28 +310,29 @@ def stop_conversation():
     conversation_thread = None
     conversation_manager.reset()
     asyncio.run(conversation_manager.initialize())
-    return jsonify({"status": "stopped"})
+    socketio.emit("conversation_stopped")
 
-@app.route("/get_updates", methods=["GET"])
-def get_updates():
-    messages = conversation_manager.get_new_messages()
-    return jsonify({"messages": messages})
+@socketio.on("transcription")
+async def handle_transcription(data):
+    transcript = data['data']
+    print(f"Received transcription: {transcript}")
+    
+    # Process the transcription with the AI model
+    full_response, tts_response = await conversation_manager.llm.process(transcript, "")
+    
+    # Emit the AI response back to the client
+    socketio.emit("user_message", {"message": transcript})
+    socketio.emit("ai_response", {"message": full_response})
+    
+    # Generate and play text-to-speech
+    tts.speak(tts_response)
 
-@app.route("/send_message", methods=["POST"])
-def send_message():
-    message = request.json.get("message")
-    conversation_manager.add_user_message(message)
-    return jsonify({"status": "sent"})
-
-@app.route("/get_image", methods=["GET"])
-def get_image():
-    try:
-        frame = webcam_stream.read(encode=True)
-        if frame is None:
-            return jsonify({"error": "No frame available"}), 500
-        return jsonify({"image": frame.decode("utf-8")})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+@socketio.on("image")
+def handle_image(data):
+    image_data = data['image'].split(',')[1]
+    # Store or process the image as needed
+    # For now, we'll just acknowledge receipt
+    socketio.emit("image_received", {"status": "Image received"})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
@@ -330,4 +341,4 @@ if __name__ == "__main__":
     print(f"Starting server on port {port}")
     print(f"Debug mode: {debug}")
 
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    socketio.run(app, host="0.0.0.0", port=port, debug=debug)
