@@ -16,16 +16,13 @@ startBtn.addEventListener('click', function () {
     startBtn.style.display = 'none';
     stopBtn.style.display = 'block';
     loadingIndicator.style.display = 'block';
-
-    if (recognition) {
-        recognition.start();
-        console.log("Speech recognition started");
-    }
+    startSpeechRecognition();
 });
 
 stopBtn.addEventListener('click', function () {
     socket.emit('stop_conversation');
     loadingIndicator.style.display = 'block';
+    stopSpeechRecognition();
 });
 
 socket.on('conversation_stopped', function () {
@@ -33,21 +30,44 @@ socket.on('conversation_stopped', function () {
     stopBtn.style.display = 'none';
     conversation.innerHTML = '';
     loadingIndicator.style.display = 'none';
+    stopSpeechRecognition();
+});
 
+function startSpeechRecognition() {
+    if ('webkitSpeechRecognition' in window) {
+        recognition = new webkitSpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+        recognition.onresult = handleSpeechRecognitionResult;
+        recognition.onend = function () {
+            console.log("Speech recognition ended. Restarting...");
+            recognition.start();
+        };
+        recognition.start();
+        console.log("Speech recognition started");
+    } else {
+        console.log("Speech recognition not supported");
+    }
+}
+
+function stopSpeechRecognition() {
     if (recognition) {
         recognition.stop();
         console.log("Speech recognition stopped");
     }
-});
+}
 
-if ('webkitSpeechRecognition' in window) {
-    recognition = new webkitSpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    recognition.onresult = handleSpeechRecognitionResult;
-} else {
-    console.log("Speech recognition not supported");
+function handleSpeechRecognitionResult(event) {
+    const transcript = Array.from(event.results)
+        .map(result => result[0].transcript)
+        .join('');
+
+    if (event.results[0].isFinal) {
+        console.log('Sending transcription:', transcript);
+        socket.emit('transcription', { data: transcript });
+        addUserMessage(transcript);
+    }
 }
 
 socket.on('user_message', function (data) {
@@ -80,38 +100,20 @@ function addAiMessage(message) {
 }
 
 function formatMessage(message) {
-    // Regular expression to match Pinterest links in the current format
-    const pinterestLinkRegex = /(https:\/\/www\.pinterest\.com\/search\/pins\/\?[^\s]+)/g;
+    const pinterestLinkRegex = /\[([^\]]+)\]\((https:\/\/www\.pinterest\.com\/[^\s]+)\)/g;
 
-    // Replace Pinterest links with formatted HTML
-    const formattedMessage = message.replace(pinterestLinkRegex, (match, url) => {
-        // Decode the URL to get a readable title
-        const decodedUrl = decodeURIComponent(url);
-        const titleMatch = decodedUrl.match(/q=([^&]+)/);
-        const title = titleMatch ? titleMatch[1].replace(/\+/g, ' ') : 'Pinterest Item';
-
+    const formattedMessage = message.replace(pinterestLinkRegex, (match, title, url) => {
         return `
-         <a href="${url}" target="_blank" class="pinterest-link">
-             <div class="pinterest-link-content">
-                 <div class="pinterest-link-title">${title}</div>
-                 <div class="pinterest-link-price">View on Pinterest</div>
-             </div>
-         </a>
-     `;
+            <a href="${url}" target="_blank" class="pinterest-link">
+                <div class="pinterest-link-content">
+                    <div class="pinterest-link-title">${title}</div>
+                    <div class="pinterest-link-price">View on Pinterest</div>
+                </div>
+            </a>
+        `;
     });
 
     return formattedMessage;
-}
-
-function handleSpeechRecognitionResult(event) {
-    const transcript = Array.from(event.results)
-        .map(result => result[0].transcript)
-        .join('');
-
-    if (event.results[0].isFinal) {
-        console.log('Sending transcription:', transcript);
-        socket.emit('transcription', { data: transcript });
-    }
 }
 
 function getVideoStream() {

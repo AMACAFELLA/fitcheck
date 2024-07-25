@@ -1,4 +1,3 @@
-# Use offical lightweight python image.
 # https://hub.docker.com/_/python
 FROM python:3.11.9-slim
 
