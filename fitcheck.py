@@ -11,6 +11,7 @@ from threading import Lock, Thread
 
 import cv2
 import requests
+import sounddevice as sd
 from deepgram import (
     DeepgramClient,
     DeepgramClientOptions,
@@ -290,7 +291,7 @@ class TranscriptCollector:
 class WebcamStream:
     def __init__(self):
         self.stream = cv2.VideoCapture(0)
-        self.frame = None
+        _, self.frame = self.stream.read()
         self.running = False
         self.lock = Lock()
 
@@ -305,21 +306,17 @@ class WebcamStream:
 
     def update(self):
         while self.running:
-            ret, frame = self.stream.read()
-            if ret:
-                self.lock.acquire()
-                self.frame = frame
-                self.lock.release()
+            _, frame = self.stream.read()
+            self.lock.acquire()
+            self.frame = frame
+            self.lock.release()
 
     def read(self, encode=False):
         self.lock.acquire()
-        if self.frame is not None:
-            frame = self.frame.copy()
-        else:
-            frame = None
+        frame = self.frame.copy()
         self.lock.release()
 
-        if frame is not None and encode:
+        if encode:
             _, buffer = cv2.imencode(".jpeg", frame)
             return base64.b64encode(buffer)
 
@@ -329,10 +326,9 @@ class WebcamStream:
         self.running = False
         if self.thread.is_alive():
             self.thread.join()
-        self.stream.release()
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        self.stop()
+        self.stream.release()
 
 
 class ConversationManager:
@@ -340,7 +336,7 @@ class ConversationManager:
         self.socketio = socketio
         self.transcription_response = ""
         self.llm = None
-        self.webcam_stream = None
+        self.webcam_stream = WebcamStream().start()
         self.tts = TextToSpeech()
 
     async def initialize(self):
@@ -359,7 +355,6 @@ class ConversationManager:
 
     async def main(self, stop_event):
         await self.initialize()
-        self.webcam_stream = WebcamStream().start()
 
         def handle_full_sentence(full_sentence):
             self.transcription_response = full_sentence
@@ -378,38 +373,36 @@ class ConversationManager:
                 break
 
             frame = self.webcam_stream.read()
-            if frame is not None:
-                image_path = "webcam_image.jpg"
-                cv2.imwrite(image_path, frame)
-                print(f"Webcam image saved as '{image_path}'")
+            image_path = "webcam_image.jpg"
+            cv2.imwrite(image_path, frame)
+            print(f"Webcam image saved as '{image_path}'")
 
-                image_base64 = self.process_image(image_path)
+            image_base64 = self.process_image(image_path)
 
-                try:
-                    full_response, tts_response = await self.llm.process(
-                        self.transcription_response, image_base64
-                    )
-                    self.socketio.emit(
-                        "user_message", {"message": self.transcription_response}
-                    )
-                    self.socketio.emit("ai_response", {"message": full_response})
-                    self.tts.speak(tts_response)
-                except Exception as e:
-                    print(f"Error processing image: {str(e)}")
-                    self.socketio.emit(
-                        "ai_response",
-                        {
-                            "message": "I'm sorry, I couldn't process the image. Could you please try again?"
-                        },
-                    )
-                    self.tts.speak(
-                        "I'm sorry, I couldn't process the image. Could you please try again?"
-                    )
+            try:
+                full_response, tts_response = await self.llm.process(
+                    self.transcription_response, image_base64
+                )
+                self.socketio.emit(
+                    "user_message", {"message": self.transcription_response}
+                )
+                self.socketio.emit("ai_response", {"message": full_response})
+                self.tts.speak(tts_response)
+            except Exception as e:
+                print(f"Error processing image: {str(e)}")
+                self.socketio.emit(
+                    "ai_response",
+                    {
+                        "message": "I'm sorry, I couldn't process the image. Could you please try again?"
+                    },
+                )
+                self.tts.speak(
+                    "I'm sorry, I couldn't process the image. Could you please try again?"
+                )
 
             self.transcription_response = ""
 
-        if self.webcam_stream:
-            self.webcam_stream.stop()
+        self.webcam_stream.stop()
 
 
 transcript_collector = TranscriptCollector()
@@ -420,7 +413,7 @@ async def get_transcript(callback, stop_event):
 
     try:
         config = DeepgramClientOptions(options={"keepalive": "true"})
-        deepgram: DeepgramClient = DeepgramClient("", config)
+        deepgram: DeepgramClient = DeepgramClient(os.getenv("DEEPGRAM_API_KEY"), config)
 
         dg_connection = deepgram.listen.asynclive.v("1")
         print("Listening...")
@@ -464,6 +457,7 @@ async def get_transcript(callback, stop_event):
 
         await transcription_complete.wait()
         microphone.finish()
+
         await dg_connection.finish()
 
     except Exception as e:

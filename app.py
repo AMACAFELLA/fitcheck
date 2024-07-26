@@ -19,7 +19,7 @@ socketio = SocketIO(
 )
 
 conversation_manager = ConversationManager(socketio)
-webcam_stream = None
+webcam_stream = WebcamStream().start()
 conversation_thread = None
 stop_event = Event()
 
@@ -36,24 +36,20 @@ def index():
 @socketio.on("connect")
 def on_connect():
     print("Client connected")
+    get_image()
 
 
 @socketio.on("disconnect")
 def on_disconnect():
     print("Client disconnected")
-    global webcam_stream
-    if webcam_stream:
-        webcam_stream.stop()
-        webcam_stream = None
 
 
 @socketio.on("start_conversation")
 def start_conversation():
-    global conversation_thread, stop_event, webcam_stream
+    global conversation_thread, stop_event
     print("Start Conversation")
     if conversation_thread is None or not conversation_thread.is_alive():
         stop_event.clear()
-        webcam_stream = WebcamStream().start()
         conversation_thread = Thread(
             target=lambda: asyncio.run(conversation_thread_function())
         )
@@ -64,33 +60,26 @@ def start_conversation():
 
 @socketio.on("get_image")
 def get_image():
-    global webcam_stream
-    if webcam_stream:
-        frame = webcam_stream.read(encode=True)
-        if frame is not None:
-            socketio.emit("image", {"image": frame.decode("utf-8")})
-        else:
-            print("Error: Unable to capture frame")
-    else:
-        print("Error: Webcam stream not initialized")
+    frame = webcam_stream.read(encode=True)
+    socketio.emit("image", {"image": frame.decode("utf-8")})
 
 
 @socketio.on("stop_conversation")
 def stop_conversation():
-    global conversation_thread, stop_event, webcam_stream
+    global conversation_thread, stop_event
     print("Stopping Conversation")
     stop_event.set()
     if conversation_thread:
-        conversation_thread.join(timeout=5)
+        conversation_thread.join(timeout=5)  # Wait up to 5 seconds for thread to finish
         if conversation_thread.is_alive():
             print("Warning: Conversation thread did not terminate gracefully")
+            # Implement additional forceful termination if needed
     conversation_thread = None
     conversation_manager.reset()
-    if webcam_stream:
-        webcam_stream.stop()
-        webcam_stream = None
+    webcam_stream.stop()  # Ensure webcam stream is stopped
     asyncio.run(conversation_manager.initialize())
     socketio.emit("conversation_stopped")
+    # Implement additional cleanup as needed
 
 
 @socketio.on("transcription")
