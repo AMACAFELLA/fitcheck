@@ -2,14 +2,13 @@ import asyncio
 import base64
 import os
 import re
-import shutil
-import subprocess
 import tempfile
 import time
 import wave
 from threading import Lock, Thread
 
 import cv2
+import numpy as np
 import requests
 import sounddevice as sd
 from deepgram import (
@@ -216,11 +215,6 @@ class TextToSpeech:
     DG_API_KEY = os.getenv("DEEPGRAM_API_KEY")
     MODEL_NAME = "aura-arcas-en"
 
-    @staticmethod
-    def is_installed(lib_name: str) -> bool:
-        lib = shutil.which(lib_name)
-        return lib is not None
-
     def speak(self, text):
         DEEPGRAM_URL = f"https://api.deepgram.com/v1/speak?model={self.MODEL_NAME}&performance=some&encoding=linear16&sample_rate=24000"
         headers = {
@@ -255,23 +249,19 @@ class TextToSpeech:
         os.unlink(temp_file.name)
 
     def play_audio(self, file_path):
-        if self.is_installed("ffplay"):
-            subprocess.run(
-                ["ffplay", "-autoexit", "-nodisp", file_path],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        elif self.is_installed("afplay"):
-            subprocess.run(["afplay", file_path])
-        elif self.is_installed("aplay"):
-            subprocess.run(["aplay", file_path])
-        elif self.is_installed("powershell"):
-            powershell_cmd = f'(New-Object Media.SoundPlayer "{file_path}").PlaySync()'
-            subprocess.run(["powershell", "-Command", powershell_cmd])
-        else:
-            print(
-                f"Audio saved to {file_path}. Please install ffplay, afplay, aplay, or use PowerShell to play the audio."
-            )
+        with wave.open(file_path, "rb") as wf:
+            # Extract audio parameters
+            framerate = wf.getframerate()
+
+            # Read all frames
+            frames = wf.readframes(wf.getnframes())
+
+            # Convert bytes to numpy array
+            audio_data = np.frombuffer(frames, dtype=np.int16)
+
+            # Play the audio
+            sd.play(audio_data, framerate)
+            sd.wait()
 
 
 class TranscriptCollector:
@@ -413,7 +403,7 @@ async def get_transcript(callback, stop_event):
 
     try:
         config = DeepgramClientOptions(options={"keepalive": "true"})
-        deepgram: DeepgramClient = DeepgramClient(os.getenv("DEEPGRAM_API_KEY"), config)
+        deepgram: DeepgramClient = DeepgramClient("", config)
 
         dg_connection = deepgram.listen.asynclive.v("1")
         print("Listening...")
@@ -457,7 +447,6 @@ async def get_transcript(callback, stop_event):
 
         await transcription_complete.wait()
         microphone.finish()
-
         await dg_connection.finish()
 
     except Exception as e:
