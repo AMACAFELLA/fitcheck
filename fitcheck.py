@@ -95,30 +95,20 @@ class LanguageModelProcessor:
     5. Ask follow-up questions to understand the context (e.g., occasion, personal style, weather).
 
 
-
-
     Be friendly, creative, and insightful in your recommendations. Consider factors such as the occasion,
     weather, current trends, and the user's personal style when giving advice.
-
-
 
 
     When suggesting items, use specific details that can be used to search Pinterest. Include the user's gender
     (male/female) in your response to help with Pinterest searches.
 
 
-
-
     Remember to be concise and go straight to the point. Do not use emoticons or emojis.
-
-
 
 
     Importantly, always refer to the chat history before asking questions. If the user has already provided
     information about their preferences, occasion, or style, use that information instead of asking
     repeated questions. Only ask follow-up questions about new information you need.
-
-
 
 
     When providing Pinterest links, they will be automatically formatted as follows:
@@ -378,6 +368,7 @@ class ConversationManager:
                 )
                 self.socketio.emit("ai_response", {"message": full_response})
                 self.tts.speak(tts_response)
+                self.socketio.emit("tts_complete")
             except Exception as e:
                 print(f"Error processing image: {str(e)}")
                 self.socketio.emit(

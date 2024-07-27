@@ -1,9 +1,10 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FitCheck AI Stylist</title>
+    <link rel="icon" type="icon" href="/static/favicon.ico" />
     <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <link
@@ -122,6 +123,178 @@
             id="conversation"
             class="conversation-container bg-gray-50 rounded-lg p-4 mb-4"
           ></div>
+          <div id="loading" class="text-center mb-4" style="display: none">
+            <p>Processing...</p>
+          </div>
+          <div class="flex space-x-4">
+            <button
+              id="startBtn"
+              class="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300"
+            >
+              Start Conversation
+            </button>
+            <button
+              id="stopBtn"
+              class="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300"
+              style="display: none"
+            >
+              Stop Conversation
+            </button>
+          </div>
+        </div>
+      </div>
+      <div id="loadingIndicator" class="loading-indicator"></div>
+    </div>
+    <script>
+      // Set the base URL for API calls
+      window.baseUrl = "{{ request.url_root }}";
+    </script>
+    <script src="/static/js/main.js"></script>
+  </body>
+</html> -->
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FitCheck AI Stylist</title>
+    <link rel="icon" type="icon" href="/static/favicon.ico" />
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      .conversation-container {
+        height: 400px;
+        overflow-y: auto;
+      }
+
+      .message {
+        background-color: #f3f4f6;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+      }
+
+      .user-message {
+        text-align: right;
+        background-color: #e5e7eb;
+      }
+
+      .ai-message {
+        text-align: left;
+      }
+
+      .loading-indicator {
+        display: none;
+        text-align: center;
+        padding: 10px;
+        background-color: #e5e7eb;
+        border-radius: 8px;
+        margin-bottom: 10px;
+      }
+
+      .loading-indicator-content {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .loading-indicator-text {
+        margin-left: 10px;
+        font-weight: bold;
+      }
+
+      .loading-indicator::before {
+        content: "";
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 3px solid #3498db;
+        border-color: #3498db transparent #3498db transparent;
+        animation: loading 1.2s linear infinite;
+      }
+
+      @keyframes loading {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .pinterest-link {
+        display: flex;
+        align-items: center;
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 10px;
+        margin-top: 10px;
+        text-decoration: none;
+        color: inherit;
+        transition: box-shadow 0.3s ease;
+      }
+
+      .pinterest-link:hover {
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .pinterest-link img {
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 4px;
+        margin-right: 10px;
+      }
+
+      .pinterest-link-content {
+        flex-grow: 1;
+      }
+
+      .pinterest-link-title {
+        font-weight: bold;
+        margin-bottom: 4px;
+      }
+
+      .pinterest-link-price {
+        font-size: 0.9em;
+        color: #4a5568;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+      <h1 class="text-4xl font-bold text-center mb-8 text-indigo-600">
+        FitCheck AI Stylist
+      </h1>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="bg-white rounded-lg shadow-md p-4">
+          <h2 class="text-2xl font-semibold mb-4">Your Outfit</h2>
+          <video
+            id="webcam"
+            class="w-full h-160 object-cover rounded-lg"
+            autoplay
+            playsinline
+          ></video>
+        </div>
+        <div class="bg-white rounded-lg shadow-md p-4">
+          <h2 class="text-2xl font-semibold mb-4">Conversation</h2>
+          <div
+            id="conversation"
+            class="conversation-container bg-gray-50 rounded-lg p-4 mb-4"
+          >
+            <div id="loadingIndicator" class="loading-indicator">
+              <div class="loading-indicator-content">
+                <span class="loading-indicator-text">Listening...</span>
+              </div>
+            </div>
+          </div>
           <div id="loading" class="text-center mb-4" style="display: none">
             <p>Processing...</p>
           </div>
