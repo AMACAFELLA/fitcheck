@@ -27,7 +27,7 @@ Follow these steps to install and set up FitCheck AI Stylist on your local machi
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/fitcheck-ai-stylist.git
+git clone https://github.com/AMACAFELLA/fitcheck.git
 cd fitcheck-ai-stylist
 ```
 
