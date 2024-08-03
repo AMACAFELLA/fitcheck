@@ -5,7 +5,7 @@ import re
 import tempfile
 import time
 import wave
-from threading import Lock, Thread
+from threading import Event, Lock, Thread
 
 import cv2
 import numpy as np
@@ -242,27 +242,34 @@ class TextToSpeech:
         start_time = time.time()
         first_byte_time = None
 
-        with requests.post(
-            DEEPGRAM_URL, stream=True, headers=headers, json=payload
-        ) as r:
-            r.raise_for_status()
+        try:
+            with requests.post(
+                DEEPGRAM_URL, stream=True, headers=headers, json=payload, timeout=30
+            ) as r:
+                r.raise_for_status()
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
-                with wave.open(temp_file.name, "wb") as wav_file:
-                    wav_file.setnchannels(1)
-                    wav_file.setsampwidth(2)
-                    wav_file.setframerate(24000)
+                with tempfile.NamedTemporaryFile(
+                    delete=False, suffix=".wav"
+                ) as temp_file:
+                    with wave.open(temp_file.name, "wb") as wav_file:
+                        wav_file.setnchannels(1)
+                        wav_file.setsampwidth(2)
+                        wav_file.setframerate(24000)
 
-                    for chunk in r.iter_content(chunk_size=1024):
-                        if chunk:
-                            if first_byte_time is None:
-                                first_byte_time = time.time()
-                                ttfb = int((first_byte_time - start_time) * 1000)
-                                print(f"TTS Time to First Byte (TTFB): {ttfb}ms\n")
-                            wav_file.writeframes(chunk)
+                        for chunk in r.iter_content(chunk_size=1024):
+                            if chunk:
+                                if first_byte_time is None:
+                                    first_byte_time = time.time()
+                                    ttfb = int((first_byte_time - start_time) * 1000)
+                                    print(f"TTS Time to First Byte (TTFB): {ttfb}ms\n")
+                                wav_file.writeframes(chunk)
 
-        self.play_audio(temp_file.name)
-        os.unlink(temp_file.name)
+            self.play_audio(temp_file.name)
+            os.unlink(temp_file.name)
+        except requests.Timeout:
+            print("TTS request timed out")
+        except requests.RequestException as e:
+            print(f"TTS request failed: {e}")
 
     def play_audio(self, file_path):
         """
@@ -389,54 +396,59 @@ class ConversationManager:
             self.socketio.emit("listening_state", {"state": "processing"})
 
         while not stop_event.is_set():
-            self.socketio.emit("listening_state", {"state": "listening"})
-            await get_transcript(handle_full_sentence, stop_event)
-
-            if stop_event.is_set():
-                break
-
-            if "goodbye" in self.transcription_response.lower():
-                print("Goodbye! Ending the conversation.")
-                self.socketio.emit("listening_state", {"state": "ai_speaking"})
-                self.tts.speak(
-                    "Goodbye! It was a pleasure assisting you with your style today. Feel free to come back anytime for more fashion advice."
-                )
-                self.socketio.emit("conversation_stopped")
-                break
-
-            frame = self.webcam_stream.read()
-            image_path = "webcam_image.jpg"
-            cv2.imwrite(image_path, frame)
-            print(f"Webcam image saved as '{image_path}'")
-
-            image_base64 = self.process_image(image_path)
-
             try:
-                self.socketio.emit("listening_state", {"state": "processing"})
-                full_response, tts_response = await self.llm.process(
-                    self.transcription_response, image_base64
-                )
-                self.socketio.emit(
-                    "user_message", {"message": self.transcription_response}
-                )
-                self.socketio.emit("ai_response", {"message": full_response})
-                self.socketio.emit("listening_state", {"state": "ai_speaking"})
-                self.tts.speak(tts_response)
-                self.socketio.emit("tts_complete")
-            except Exception as e:
-                print(f"Error processing image: {str(e)}")
-                self.socketio.emit(
-                    "ai_response",
-                    {
-                        "message": "I'm sorry, I couldn't process the image. Could you please try again?"
-                    },
-                )
-                self.socketio.emit("listening_state", {"state": "ai_speaking"})
-                self.tts.speak(
-                    "I'm sorry, I couldn't process the image. Could you please try again?"
-                )
+                self.socketio.emit("listening_state", {"state": "listening"})
+                await get_transcript(handle_full_sentence, stop_event)
 
-            self.transcription_response = ""
+                if stop_event.is_set():
+                    break
+
+                if "goodbye" in self.transcription_response.lower():
+                    print("Goodbye! Ending the conversation.")
+                    self.socketio.emit("listening_state", {"state": "ai_speaking"})
+                    self.tts.speak(
+                        "Goodbye! It was a pleasure assisting you with your style today. Feel free to come back anytime for more fashion advice."
+                    )
+                    self.socketio.emit("conversation_stopped")
+                    break
+
+                frame = self.webcam_stream.read()
+                image_path = "webcam_image.jpg"
+                cv2.imwrite(image_path, frame)
+                print(f"Webcam image saved as '{image_path}'")
+
+                image_base64 = self.process_image(image_path)
+
+                try:
+                    self.socketio.emit("listening_state", {"state": "processing"})
+                    full_response, tts_response = await self.llm.process(
+                        self.transcription_response, image_base64
+                    )
+                    self.socketio.emit(
+                        "user_message", {"message": self.transcription_response}
+                    )
+                    self.socketio.emit("ai_response", {"message": full_response})
+                    self.socketio.emit("listening_state", {"state": "ai_speaking"})
+                    self.tts.speak(tts_response)
+                    self.socketio.emit("tts_complete")
+                except Exception as e:
+                    print(f"Error processing image: {str(e)}")
+                    self.socketio.emit(
+                        "ai_response",
+                        {
+                            "message": "I'm sorry, I couldn't process the image. Could you please try again?"
+                        },
+                    )
+                    self.socketio.emit("listening_state", {"state": "ai_speaking"})
+                    self.tts.speak(
+                        "I'm sorry, I couldn't process the image. Could you please try again?"
+                    )
+
+                self.transcription_response = ""
+
+            except Exception as e:
+                print(f"Error in main loop: {e}")
+                await asyncio.sleep(1)  # Add a small delay before retrying
 
         self.webcam_stream.stop()
 
@@ -506,9 +518,14 @@ async def get_transcript(callback, stop_event):
 
     except Exception as e:
         print(f"Could not open socket: {e}")
-        return
+    finally:
+        if "microphone" in locals():
+            microphone.finish()
+        if "dg_connection" in locals():
+            await dg_connection.finish()
 
 
 if __name__ == "__main__":
     # Run the ConversationManager if this script is executed directly
-    asyncio.run(ConversationManager().main())
+    stop_event = Event()
+    asyncio.run(ConversationManager(socketio).main(stop_event))

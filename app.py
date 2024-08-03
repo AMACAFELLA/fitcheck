@@ -29,9 +29,11 @@ conversation_thread = None
 stop_event = Event()
 
 
-# Async function to run the conversation manager
-async def conversation_thread_function():
-    await conversation_manager.main(stop_event)
+# Function to run the conversation manager
+def run_conversation_manager():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(conversation_manager.main(stop_event))
 
 
 # Route for the main page
@@ -60,9 +62,7 @@ def start_conversation():
     print("Start Conversation")
     if conversation_thread is None or not conversation_thread.is_alive():
         stop_event.clear()
-        conversation_thread = Thread(
-            target=lambda: asyncio.run(conversation_thread_function())
-        )
+        conversation_thread = Thread(target=run_conversation_manager)
         conversation_thread.start()
     else:
         print("Conversation already in progress")
@@ -91,7 +91,6 @@ def stop_conversation():
     webcam_stream.stop()  # Ensure webcam stream is stopped
     asyncio.run(conversation_manager.initialize())
     socketio.emit("conversation_stopped")
-    # Implement additional cleanup as needed
 
 
 # Socket.IO event handler for receiving transcriptions
@@ -103,12 +102,13 @@ def handle_transcription(data):
 
 # Main entry point
 if __name__ == "__main__":
-    # Get port and debug mode from environment variables
+    # Get port, debug mode, and host from environment variables
     port = int(os.environ.get("PORT", 8080))
     debug = os.environ.get("DEBUG", "False").lower() == "true"
+    host = os.environ.get("HOST", "127.0.0.1")  # Default to localhost
 
-    print(f"Starting server on port {port}")
+    print(f"Starting server on {host}:{port}")
     print(f"Debug mode: {debug}")
 
     # Run the Socket.IO server
-    socketio.run(app, host="0.0.0.0", port=port, debug=debug)
+    socketio.run(app, host=host, port=port, debug=debug)
