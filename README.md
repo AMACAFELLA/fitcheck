@@ -9,6 +9,8 @@ FitCheck AI Stylist is an interactive web application that uses artificial intel
 - AI-powered outfit analysis and recommendations
 - Text-to-speech for AI responses
 - Pinterest integration for product suggestions
+- Outfit history tracking and management
+- Accessibility features (high contrast mode, font size adjustment)
 
 ## Prerequisites
 
@@ -113,15 +115,19 @@ To run FitCheck AI Stylist locally, follow these steps:
 3. Speak clearly into your microphone to describe your outfit or ask for style advice.
 4. The AI will analyze your outfit through the webcam feed and provide personalized recommendations.
 5. You can view Pinterest product suggestions directly in the chat interface.
+6. Access your outfit history and manage previous recommendations.
 
 ## Project Structure
 
 - `fitcheck/`
   - `fitcheck.py`: Main backend logic for the AI stylist
   - `app.py`: Flask application setup and routes
+  - `outfit_history.py`: Manages outfit history functionality
   - `requirements.txt`: Python dependencies
   - `static/`
     - `js/main.js`: Frontend JavaScript code
+    - `css/style.css`: Frontend CSS code
+    - `favicon.ico`: Website favicon
   - `templates/`
     - `index.html`: Main HTML template for the web interface
 
@@ -144,6 +150,17 @@ To run FitCheck AI Stylist locally, follow these steps:
   - CSS3 (with Tailwind CSS)
   - JavaScript
   - Socket.IO (for real-time communication)
+
+## Accessibility Features
+
+- High contrast mode
+- Font size adjustment
+- Screen reader support
+- Keyboard navigation
+- Linbe spacing support
+- Dyslexia support
+- Color blindness filters( Protanopia, Deuteranopia, Tritanopia)
+- Keyvoartd shortcuts
 
 ## Troubleshooting
 

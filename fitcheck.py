@@ -4,11 +4,9 @@ import os
 import re
 import tempfile
 import time
-import wave
 from threading import Event, Lock, Thread
 
 import cv2
-import numpy as np
 import requests
 import sounddevice as sd
 from deepgram import (
@@ -27,6 +25,8 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pinterest.client import PinterestSDKClient
+
+from outfit_history import OutfitHistory
 
 # Initialize Flask-SocketIO for real-time communication
 socketio = SocketIO()
@@ -98,6 +98,7 @@ class LanguageModelProcessor:
         self.model = None
         self.memory = ChatMessageHistory()
         self.pinterest_manager = PinterestManager()
+        self.outfit_history = OutfitHistory()
 
         # Define the system prompt for the AI stylist
         self.SYSTEM_PROMPT = """
@@ -107,6 +108,7 @@ class LanguageModelProcessor:
         3. Provide specific suggestions to improve or complement the outfit.
         4. Use the Pinterest API to search for and provide direct links to items that could enhance the look.
         5. Ask follow-up questions to understand the context (e.g., occasion, personal style, weather).
+        6. When requested, recall and discuss previous outfit recommendations.
 
         Be friendly, creative, and insightful in your recommendations. Consider factors such as the occasion,
         weather, current trends, and the user's personal style when giving advice.
@@ -120,9 +122,40 @@ class LanguageModelProcessor:
         information about their preferences, occasion, or style, use that information instead of asking
         repeated questions. Only ask follow-up questions about new information you need.
 
+        CRITICAL: Your primary focus is fashion and style. If a user asks about or shows an object that is not
+        fashion-related (e.g., electronics, furniture, food), politely acknowledge that you see the object but
+        redirect the conversation back to fashion and style. For example:
+
+        User: "What do you think of this gaming mouse I'm holding?"
+        You: "I can see that you're holding what appears to be a gaming mouse. However, as a fashion stylist,
+        I'm not equipped to comment on electronics. Instead, I'd love to discuss your current outfit or any
+        fashion-related questions you might have. Is there anything about your wardrobe you'd like advice on?"
+
         When providing Pinterest links, they will be automatically formatted as follows:
         [Link text](URL)
         You don't need to format them yourself; the system will handle this.
+
+        When the user asks about previous outfits or recommendations, access the outfit history and provide a summary of recent outfits and recommendations.
+
+        For users with color blindness or low vision:
+        1. Describe colors using common objects or elements (e.g., "sky blue", "grass green", "sunflower yellow").
+        2. Focus on patterns, textures, and shapes when describing outfits and recommendations.
+        3. Use directional terms to describe outfit components (e.g., "on the left side", "at the bottom").
+        4. Describe contrast levels between different parts of the outfit.
+        5. Mention specific brand names and style numbers when recommending items, as these can be easier to search for.
+        6. Suggest outfit combinations based on texture and pattern contrasts rather than just color.
+        7. Provide information about clothing tags or labels that might help identify items.
+        8. Recommend accessories or outfit elements that can be identified by touch or shape.
+        9. Suggest outfit organizing techniques that don't rely solely on color (e.g., by occasion, fabric type, or season).
+        10. When recommending new items, mention if they're available in multiple color options.
+
+        Always prioritize clear, detailed descriptions and practical advice that doesn't rely solely on visual cues.
+
+        When providing Pinterest links, they will be automatically formatted as follows:
+        [Link text](URL)
+        You don't need to format them yourself; the system will handle this.
+
+        When the user asks about previous outfits or recommendations, access the outfit history and provide a summary of recent outfits and recommendations.
         """
 
         # Set up the prompt template for the language model
@@ -165,6 +198,10 @@ class LanguageModelProcessor:
         # Add the user's message to the chat history
         self.memory.add_user_message(text)
 
+        # Check if the user is asking about previous outfits
+        if "previous" in text.lower() and "outfit" in text.lower():
+            return await self.recall_previous_outfits()
+
         response = await self.conversation.ainvoke(
             {"prompt": text, "image_base64": image_base64},
             config={"configurable": {"session_id": "unused"}},
@@ -175,6 +212,9 @@ class LanguageModelProcessor:
 
         # Add the AI's response to the chat history
         self.memory.add_ai_message(processed_response)
+
+        # Save the outfit recommendation
+        self.outfit_history.add_outfit(text, processed_response)
 
         elapsed_time = int((end_time - start_time) * 1000)
         print(f"LLM ({elapsed_time}ms): {processed_response}")
@@ -219,20 +259,47 @@ class LanguageModelProcessor:
 
         return full_response.strip(), tts_response.strip()
 
+    async def recall_previous_outfits(self):
+        """
+        Recall and summarize previous outfit recommendations.
+        """
+        recent_outfits = self.outfit_history.get_recent_outfits(limit=5)
+        if not recent_outfits:
+            return (
+                "I'm sorry, but I don't have any records of previous outfit recommendations. Let's start by analyzing your current outfit!",
+                "I don't have any records of previous outfit recommendations. Let's start fresh!",
+            )
+
+        summary = "Here's a summary of your recent outfits and recommendations:\n\n"
+        for outfit in recent_outfits:
+            summary += f"Date: {outfit['date'][:10]}\n"
+            summary += f"You asked: {outfit['user_input']}\n"
+            summary += f"My recommendation: {outfit['ai_response'][:200]}...\n\n"
+
+        summary += "Would you like me to elaborate on any of these outfits or shall we focus on your current look?"
+
+        return summary, summary
+
 
 class TextToSpeech:
     """
     Handles text-to-speech conversion using the Deepgram API.
     """
 
-    DG_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-    MODEL_NAME = "aura-arcas-en"
+    def __init__(self):
+        load_dotenv()
+        self.DG_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+        if not self.DG_API_KEY:
+            raise ValueError("Deepgram API key not found in environment variables")
+        self.MODEL_NAME = "aura-asteria-en"
 
     def speak(self, text):
         """
         Convert text to speech and play the audio.
         """
-        DEEPGRAM_URL = f"https://api.deepgram.com/v1/speak?model={self.MODEL_NAME}&performance=some&encoding=linear16&sample_rate=24000"
+        DEEPGRAM_URL = (
+            f"https://api.deepgram.com/v1/speak?model={self.MODEL_NAME}&encoding=mp3"
+        )
         headers = {
             "Authorization": f"Token {self.DG_API_KEY}",
             "Content-Type": "application/json",
@@ -249,20 +316,15 @@ class TextToSpeech:
                 r.raise_for_status()
 
                 with tempfile.NamedTemporaryFile(
-                    delete=False, suffix=".wav"
+                    delete=False, suffix=".mp3"
                 ) as temp_file:
-                    with wave.open(temp_file.name, "wb") as wav_file:
-                        wav_file.setnchannels(1)
-                        wav_file.setsampwidth(2)
-                        wav_file.setframerate(24000)
-
-                        for chunk in r.iter_content(chunk_size=1024):
-                            if chunk:
-                                if first_byte_time is None:
-                                    first_byte_time = time.time()
-                                    ttfb = int((first_byte_time - start_time) * 1000)
-                                    print(f"TTS Time to First Byte (TTFB): {ttfb}ms\n")
-                                wav_file.writeframes(chunk)
+                    for chunk in r.iter_content(chunk_size=1024):
+                        if chunk:
+                            if first_byte_time is None:
+                                first_byte_time = time.time()
+                                ttfb = int((first_byte_time - start_time) * 1000)
+                                print(f"TTS Time to First Byte (TTFB): {ttfb}ms\n")
+                            temp_file.write(chunk)
 
             self.play_audio(temp_file.name)
             os.unlink(temp_file.name)
@@ -270,17 +332,24 @@ class TextToSpeech:
             print("TTS request timed out")
         except requests.RequestException as e:
             print(f"TTS request failed: {e}")
+            if hasattr(e, "response") and e.response is not None:
+                print(f"Response status code: {e.response.status_code}")
+                print(f"Response content: {e.response.text}")
+        except Exception as e:
+            print(f"Unexpected error in TTS: {str(e)}")
 
     def play_audio(self, file_path):
         """
         Play the audio file using sounddevice.
         """
-        with wave.open(file_path, "rb") as wf:
-            framerate = wf.getframerate()
-            frames = wf.readframes(wf.getnframes())
-            audio_data = np.frombuffer(frames, dtype=np.int16)
-            sd.play(audio_data, framerate)
+        try:
+            import soundfile as sf
+
+            data, samplerate = sf.read(file_path)
+            sd.play(data, samplerate)
             sd.wait()
+        except Exception as e:
+            print(f"Error playing audio: {str(e)}")
 
 
 class TranscriptCollector:
@@ -357,115 +426,98 @@ class WebcamStream:
 
 
 class ConversationManager:
-    """
-    Manages the conversation flow between the user and the AI stylist.
-    """
-
     def __init__(self, socketio):
         self.socketio = socketio
         self.transcription_response = ""
         self.llm = None
-        self.webcam_stream = WebcamStream().start()
+        self.webcam_stream = None
         self.tts = TextToSpeech()
 
     async def initialize(self):
-        """Initialize the language model processor."""
         self.llm = LanguageModelProcessor()
         await self.llm.initialize_model()
+        if self.webcam_stream is None or not self.webcam_stream.running:
+            self.webcam_stream = WebcamStream().start()
 
     def reset(self):
-        """Reset the conversation state."""
         self.transcription_response = ""
         self.llm = None
         self.tts = TextToSpeech()
+        if self.webcam_stream:
+            self.webcam_stream.stop()
+            self.webcam_stream = None
 
-    def process_image(self, image_path):
-        """Process the image and convert it to base64."""
-        with open(image_path, "rb") as image_file:
-            image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
+    def capture_webcam(self):
+        if self.webcam_stream is None or not self.webcam_stream.running:
+            self.webcam_stream = WebcamStream().start()
+        frame = self.webcam_stream.read()
+        _, buffer = cv2.imencode(".jpg", frame)
+        image_base64 = base64.b64encode(buffer).decode("utf-8")
+        self.socketio.emit("webcam_updated", {"image": image_base64})
         return image_base64
 
     async def main(self, stop_event):
-        """
-        Main conversation loop that handles user input, AI processing, and responses.
-        """
         await self.initialize()
-
-        def handle_full_sentence(full_sentence):
-            self.transcription_response = full_sentence
-            self.socketio.emit("listening_state", {"state": "processing"})
 
         while not stop_event.is_set():
             try:
                 self.socketio.emit("listening_state", {"state": "listening"})
-                await get_transcript(handle_full_sentence, stop_event)
+                full_sentence = await get_transcript(stop_event)
 
                 if stop_event.is_set():
                     break
 
-                if "goodbye" in self.transcription_response.lower():
-                    print("Goodbye! Ending the conversation.")
-                    self.socketio.emit("listening_state", {"state": "ai_speaking"})
-                    self.tts.speak(
-                        "Goodbye! It was a pleasure assisting you with your style today. Feel free to come back anytime for more fashion advice."
-                    )
-                    self.socketio.emit("conversation_stopped")
-                    break
-
-                frame = self.webcam_stream.read()
-                image_path = "webcam_image.jpg"
-                cv2.imwrite(image_path, frame)
-                print(f"Webcam image saved as '{image_path}'")
-
-                image_base64 = self.process_image(image_path)
-
-                try:
+                if full_sentence:
                     self.socketio.emit("listening_state", {"state": "processing"})
-                    full_response, tts_response = await self.llm.process(
-                        self.transcription_response, image_base64
-                    )
-                    self.socketio.emit(
-                        "user_message", {"message": self.transcription_response}
-                    )
-                    self.socketio.emit("ai_response", {"message": full_response})
-                    self.socketio.emit("listening_state", {"state": "ai_speaking"})
-                    self.tts.speak(tts_response)
-                    self.socketio.emit("tts_complete")
-                except Exception as e:
-                    print(f"Error processing image: {str(e)}")
-                    self.socketio.emit(
-                        "ai_response",
-                        {
-                            "message": "I'm sorry, I couldn't process the image. Could you please try again?"
-                        },
-                    )
-                    self.socketio.emit("listening_state", {"state": "ai_speaking"})
-                    self.tts.speak(
-                        "I'm sorry, I couldn't process the image. Could you please try again?"
-                    )
+                    image_base64 = (
+                        self.capture_webcam()
+                    )  # Capture image after each question
 
-                self.transcription_response = ""
+                    if "goodbye" in full_sentence.lower():
+                        print("Goodbye! Ending the conversation.")
+                        self.socketio.emit("listening_state", {"state": "ai_speaking"})
+                        self.tts.speak(
+                            "Goodbye! It was a pleasure assisting you with your style today. Feel free to come back anytime for more fashion advice."
+                        )
+                        self.socketio.emit("conversation_stopped")
+                        break
+
+                    try:
+                        full_response, tts_response = await self.llm.process(
+                            full_sentence, image_base64
+                        )
+                        self.socketio.emit("user_message", {"message": full_sentence})
+                        self.socketio.emit("ai_response", {"message": full_response})
+                        self.socketio.emit("listening_state", {"state": "ai_speaking"})
+                        self.tts.speak(tts_response)
+                        self.socketio.emit("tts_complete")
+                    except Exception as e:
+                        print(f"Error processing image: {str(e)}")
+                        self.socketio.emit(
+                            "ai_response",
+                            {
+                                "message": "I'm sorry, I couldn't process the image. Could you please try again?"
+                            },
+                        )
+                        self.socketio.emit("listening_state", {"state": "ai_speaking"})
+                        self.tts.speak(
+                            "I'm sorry, I couldn't process the image. Could you please try again?"
+                        )
 
             except Exception as e:
                 print(f"Error in main loop: {e}")
-                await asyncio.sleep(1)  # Add a small delay before retrying
+                await asyncio.sleep(1)
 
-        self.webcam_stream.stop()
+        self.reset()
 
 
 # Create a global instance of TranscriptCollector
 transcript_collector = TranscriptCollector()
 
 
-async def get_transcript(callback, stop_event):
-    """
-    Asynchronous function to get speech transcription using Deepgram API.
-
-    Args:
-    callback (function): Function to call with the transcribed text.
-    stop_event (Event): Event to signal when to stop transcription.
-    """
+async def get_transcript(stop_event):
     transcription_complete = asyncio.Event()
+    full_sentence = ""
 
     try:
         config = DeepgramClientOptions(options={"keepalive": "true"})
@@ -475,24 +527,17 @@ async def get_transcript(callback, stop_event):
         print("Listening...")
 
         async def on_message(self, result, **kwargs):
-            """Callback function for handling transcription messages."""
+            nonlocal full_sentence
             if stop_event.is_set():
                 transcription_complete.set()
                 return
 
             sentence = result.channel.alternatives[0].transcript
 
-            if not result.speech_final:
-                transcript_collector.add_part(sentence)
-            else:
-                transcript_collector.add_part(sentence)
-                full_sentence = transcript_collector.get_full_transcript()
-                if len(full_sentence.strip()) > 0:
-                    full_sentence = full_sentence.strip()
-                    print(f"Human: {full_sentence}")
-                    callback(full_sentence)
-                    transcript_collector.reset()
-                    transcription_complete.set()
+            if result.speech_final:
+                full_sentence = sentence.strip()
+                print(f"Human: {full_sentence}")
+                transcription_complete.set()
 
         dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
 
@@ -523,6 +568,8 @@ async def get_transcript(callback, stop_event):
             microphone.finish()
         if "dg_connection" in locals():
             await dg_connection.finish()
+
+    return full_sentence
 
 
 if __name__ == "__main__":

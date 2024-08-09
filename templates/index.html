@@ -9,180 +9,272 @@
     <!-- jQuery for DOM manipulation -->
     <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
     <!-- Socket.IO for real-time communication -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script
+      src="https://cdn.socket.io/4.7.5/socket.io.min.js"
+      integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO"
+      crossorigin="anonymous"
+    ></script>
     <!-- Tailwind CSS for styling -->
     <link
       href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
       rel="stylesheet"
     />
-    <style>
-      /* Custom styles for the chat interface */
-      .conversation-container {
-        height: 400px;
-        overflow-y: auto;
-      }
-
-      .message {
-        background-color: #f3f4f6;
-        padding: 10px;
-        margin-bottom: 10px;
-        border-radius: 8px;
-      }
-
-      .user-message {
-        text-align: right;
-        background-color: #e5e7eb;
-      }
-
-      .ai-message {
-        text-align: left;
-      }
-
-      /* Styles for the loading indicator */
-      .loading-indicator {
-        display: none;
-        text-align: center;
-        padding: 10px;
-        background-color: #e5e7eb;
-        border-radius: 8px;
-        margin-bottom: 10px;
-      }
-
-      .loading-indicator-content {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .loading-indicator-text {
-        margin-left: 10px;
-        font-weight: bold;
-      }
-
-      /* Animation for the loading indicator */
-      .loading-indicator::before {
-        content: "";
-        display: inline-block;
-        width: 20px;
-        height: 20px;
-        border-radius: 50%;
-        border: 3px solid #3498db;
-        border-color: #3498db transparent #3498db transparent;
-        animation: loading 1.2s linear infinite;
-      }
-
-      @keyframes loading {
-        0% {
-          transform: rotate(0deg);
-        }
-        100% {
-          transform: rotate(360deg);
-        }
-      }
-
-      /* Styles for Pinterest link cards */
-      .pinterest-link {
-        display: flex;
-        align-items: center;
-        background-color: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 10px;
-        margin-top: 10px;
-        text-decoration: none;
-        color: inherit;
-        transition: box-shadow 0.3s ease;
-      }
-
-      .pinterest-link:hover {
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      }
-
-      .pinterest-link img {
-        width: 60px;
-        height: 60px;
-        object-fit: cover;
-        border-radius: 4px;
-        margin-right: 10px;
-      }
-
-      .pinterest-link-content {
-        flex-grow: 1;
-      }
-
-      .pinterest-link-title {
-        font-weight: bold;
-        margin-bottom: 4px;
-      }
-
-      .pinterest-link-price {
-        font-size: 0.9em;
-        color: #4a5568;
-      }
-    </style>
+    <!-- Animate.css for animations -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"
+    />
+    <!-- Custom frontend styles-->
+    <link rel="stylesheet" href="/static/css/style.css" />
   </head>
   <body class="bg-gray-100 min-h-screen">
+    <!-- Accessibility: Skip to main content link -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
     <div class="container mx-auto px-4 py-8">
-      <!-- Page title -->
-      <h1 class="text-4xl font-bold text-center mb-8 text-indigo-600">
-        FitCheck AI Stylist
-      </h1>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <!-- Webcam feed section -->
-        <div class="bg-white rounded-lg shadow-md p-4">
-          <h2 class="text-2xl font-semibold mb-4">Your Outfit</h2>
-          <video
-            id="webcam"
-            class="w-full h-160 object-cover rounded-lg"
-            autoplay
-            playsinline
-          ></video>
-        </div>
-        <!-- Conversation section -->
-        <div class="bg-white rounded-lg shadow-md p-4">
-          <h2 class="text-2xl font-semibold mb-4">Conversation</h2>
-          <!-- Chat messages container -->
-          <div
-            id="conversation"
-            class="conversation-container bg-gray-50 rounded-lg p-4 mb-4"
+      <!-- Header section -->
+      <header>
+        <h1
+          class="text-4xl font-bold text-center mb-8 text-indigo-600 animate__animated animate__fadeIn"
+        >
+          FitCheck AI Stylist
+        </h1>
+      </header>
+      <!-- Main content area -->
+      <main id="main-content">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <!-- Webcam section -->
+          <section
+            class="bg-white rounded-lg shadow-md p-4 animate__animated animate__fadeInLeft"
           >
-            <!-- Loading indicator -->
-            <div id="loadingIndicator" class="loading-indicator">
-              <div class="loading-indicator-content">
-                <span class="loading-indicator-text">Listening...</span>
+            <h2 class="text-2xl font-semibold mb-4">Your Outfit</h2>
+            <div class="video-container aspect-square">
+              <video
+                id="webcam"
+                autoplay
+                playsinline
+                aria-label="Live webcam feed"
+              ></video>
+            </div>
+          </section>
+          <!-- Conversation section -->
+          <section
+            class="bg-white rounded-lg shadow-md p-4 animate__animated animate__fadeInRight"
+          >
+            <h2 class="text-2xl font-semibold mb-4">Conversation</h2>
+            <div
+              id="conversation"
+              class="conversation-container bg-gray-50 rounded-lg p-4 mb-4"
+              role="log"
+              aria-live="polite"
+              aria-label="Conversation history"
+            >
+              <!-- Loading indicator -->
+              <div
+                id="loadingIndicator"
+                class="loading-indicator"
+                aria-live="polite"
+              >
+                <div class="loading-indicator-content">
+                  <span class="loading-indicator-text">Listening...</span>
+                </div>
               </div>
             </div>
-          </div>
-          <!-- Processing indicator -->
-          <div id="loading" class="text-center mb-4" style="display: none">
-            <p>Processing...</p>
-          </div>
-          <!-- Control buttons -->
-          <div class="flex space-x-4">
-            <button
-              id="startBtn"
-              class="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300"
+            <!-- Processing indicator -->
+            <div
+              id="loading"
+              class="text-center mb-4 hidden"
+              aria-live="polite"
             >
-              Start Conversation
-            </button>
-            <button
-              id="stopBtn"
-              class="flex-1 bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300"
-              style="display: none"
-            >
-              Stop Conversation
-            </button>
-          </div>
+              <p>Processing...</p>
+            </div>
+            <!-- Conversation control buttons -->
+            <div class="flex justify-center">
+              <button
+                id="startBtn"
+                class="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 animate__animated animate__pulse"
+                aria-label="Start Conversation"
+              >
+                Start Conversation
+              </button>
+              <button
+                id="stopBtn"
+                class="w-full bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300 hidden"
+                aria-label="Stop Conversation"
+              >
+                Stop Conversation
+              </button>
+            </div>
+          </section>
         </div>
-      </div>
-      <!-- Additional loading indicator -->
-      <div id="loadingIndicator" class="loading-indicator"></div>
+        <!-- Additional buttons -->
+        <div class="mt-8 flex flex-wrap justify-center gap-4">
+          <!-- Accessibility settings button -->
+          <button
+            id="accessibilityBtn"
+            class="bg-purple-500 text-white py-2 px-4 rounded-lg hover:bg-purple-600 transition duration-300"
+            aria-label="Open Accessibility Settings"
+          >
+            Accessibility
+          </button>
+
+          <!-- Accessibility settings modal -->
+          <div
+            id="accessibilityModal"
+            class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full"
+            role="dialog"
+            aria-labelledby="accessibilityModalTitle"
+          >
+            <div
+              class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white"
+              role="document"
+            >
+              <h2 id="accessibilityModalTitle" class="text-lg font-bold mb-4">
+                Accessibility Settings
+              </h2>
+
+              <!-- Text size adjustment -->
+              <div class="mb-4">
+                <label for="textSizeSlider" class="block mb-2">Text Size</label>
+                <input
+                  type="range"
+                  id="textSizeSlider"
+                  min="12"
+                  max="24"
+                  value="16"
+                  class="w-full"
+                  aria-label="Adjust text size"
+                />
+              </div>
+
+              <!-- Line spacing adjustment -->
+              <div class="mb-4">
+                <label for="lineSpacingSlider" class="block mb-2"
+                  >Line Spacing</label
+                >
+                <input
+                  type="range"
+                  id="lineSpacingSlider"
+                  min="1"
+                  max="2"
+                  step="0.1"
+                  value="1.5"
+                  class="w-full"
+                  aria-label="Adjust line spacing"
+                />
+              </div>
+
+              <!-- Dyslexia-friendly font toggle -->
+              <div class="mb-4">
+                <label class="flex items-center">
+                  <input type="checkbox" id="dyslexiaFontToggle" class="mr-2" />
+                  Use Dyslexia-Friendly Font
+                </label>
+              </div>
+
+              <!-- High contrast mode toggle -->
+              <div class="mb-4">
+                <button
+                  id="highContrastBtn"
+                  class="bg-gray-200 text-black py-1 px-2 rounded"
+                  aria-label="Toggle High Contrast"
+                >
+                  Enable High Contrast
+                </button>
+              </div>
+
+              <!-- Color blindness mode buttons -->
+              <div class="color-blindness-buttons">
+                <button
+                  id="protanopiaBtn"
+                  class="filter-btn"
+                  aria-label="Enable Protanopia Mode"
+                >
+                  Protanopia Mode
+                </button>
+                <button
+                  id="deuteranopiaBtn"
+                  class="filter-btn"
+                  aria-label="Enable Deuteranopia Mode"
+                >
+                  Deuteranopia Mode
+                </button>
+                <button
+                  id="tritanopiaBtn"
+                  class="filter-btn"
+                  aria-label="Enable Tritanopia Mode"
+                >
+                  Tritanopia Mode
+                </button>
+                <button
+                  id="resetFilterBtn"
+                  class="filter-btn"
+                  aria-label="Reset Color Filter"
+                >
+                  Reset Filter
+                </button>
+              </div>
+
+              <!-- Close accessibility modal button -->
+              <button
+                id="closeAccessibilityModal"
+                class="mt-4 bg-red-500 text-white py-2 px-4 rounded"
+                aria-label="Close Accessibility Settings"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <!-- Outfit history button -->
+          <button
+            id="historyBtn"
+            class="bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition duration-300"
+            aria-label="Show Outfit History"
+          >
+            Show Outfit History
+          </button>
+        </div>
+      </main>
     </div>
+    <!-- SVG filters for color blindness modes -->
+    <svg width="0" height="0" class="hidden">
+      <defs>
+        <filter id="protanopia-filter">
+          <feColorMatrix
+            in="SourceGraphic"
+            type="matrix"
+            values="0.567, 0.433, 0,     0, 0
+                    0.558, 0.442, 0,     0, 0
+                    0,     0.242, 0.758, 0, 0
+                    0,     0,     0,     1, 0"
+          />
+        </filter>
+        <filter id="deuteranopia-filter">
+          <feColorMatrix
+            in="SourceGraphic"
+            type="matrix"
+            values="0.625, 0.375, 0,   0, 0
+                    0.7,   0.3,   0,   0, 0
+                    0,     0.3,   0.7, 0, 0
+                    0,     0,     0,   1, 0"
+          />
+        </filter>
+        <filter id="tritanopia-filter">
+          <feColorMatrix
+            in="SourceGraphic"
+            type="matrix"
+            values="0.95, 0.05,  0,     0, 0
+                    0,    0.433, 0.567, 0, 0
+                    0,    0.475, 0.525, 0, 0
+                    0,    0,     0,     1, 0"
+          />
+        </filter>
+      </defs>
+    </svg>
+    <!-- Set base URL for JavaScript -->
     <script>
-      // Set the base URL for API calls
       window.baseUrl = "{{ request.url_root }}";
     </script>
-    <!-- Main JavaScript file for handling interactions -->
+    <!-- Main JavaScript file -->
     <script src="/static/js/main.js"></script>
   </body>
 </html>

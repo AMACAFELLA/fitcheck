@@ -20,8 +20,4 @@ gevent==24.2.1
 gevent-websocket==0.10.1
 PyAudio==0.2.13
 sounddevice==0.4.6
-
-# Optional packages (uncomment if needed)
-# Hypercorn==0.17.3
-# Quart==0.19.6
-# SQLAlchemy==2.0.27
+soundfile
